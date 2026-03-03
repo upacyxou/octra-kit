@@ -1,0 +1,3 @@
+[submodule "vendor/webcli"]
+	path = vendor/webcli
+	url = https://github.com/octra-labs/webcli.git

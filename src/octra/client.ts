@@ -69,7 +69,9 @@ export class OctraWebCliClient {
   public constructor(config: OctraClientConfig = {}) {
     this.baseUrl = config.baseUrl ?? '';
     this.apiPrefix = config.apiPathPrefix ?? DEFAULT_PREFIX;
-    this.fetchFn = config.fetchFn ?? fetch;
+    const nativeFetch = config.fetchFn ?? fetch;
+    // Keep fetch context-safe in browsers where `window.fetch` requires Window as `this`.
+    this.fetchFn = (input, init) => nativeFetch(input, init);
   }
 
   public walletStatus(options?: OctraRequestOptions): Promise<OctraWalletStatus> {
@@ -256,7 +258,11 @@ export class OctraWebCliClient {
     const data = text ? this.tryParseJson(text) : {};
 
     if (!response.ok) {
-      const payload = typeof data === 'object' && data ? (data as OctraApiErrorPayload) : { message: text };
+      const fallbackMessage = this.buildFallbackErrorMessage(method, requestPath, response.status, response.statusText, text);
+      const payload = typeof data === 'object' && data ? (data as OctraApiErrorPayload) : {};
+      if (!payload.error && !payload.message) {
+        payload.message = fallbackMessage;
+      }
       throw new OctraApiError(response.status, payload);
     }
 
@@ -299,6 +305,22 @@ export class OctraWebCliClient {
     } catch {
       return { message: text };
     }
+  }
+
+  private buildFallbackErrorMessage(
+    method: 'GET' | 'POST',
+    requestPath: string,
+    status: number,
+    statusText: string,
+    responseText: string,
+  ): string {
+    const statusLabel = statusText ? ` ${statusText}` : '';
+    const trimmed = responseText.trim();
+    if (trimmed.length > 0) {
+      const preview = trimmed.length > 300 ? `${trimmed.slice(0, 300)}...` : trimmed;
+      return `${method} ${requestPath} failed with ${status}${statusLabel}: ${preview}`;
+    }
+    return `${method} ${requestPath} failed with ${status}${statusLabel} (empty response body)`;
   }
 }
 

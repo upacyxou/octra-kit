@@ -42,6 +42,17 @@ import {
 } from './octra';
 import './app.css';
 
+const AML_SAMPLE = `contract Counter {
+  storage count: u64 = 0;
+}`;
+
+const ASM_SAMPLE = `; constructor
+CALLER r0
+SSTORE "owner", r0
+STOP`;
+
+type CompileLanguage = 'auto' | 'aml' | 'asm';
+
 const toErrorMessage = (error: unknown): string => {
   if (isOctraApiError(error)) {
     return `${error.status} ${error.message}`;
@@ -62,6 +73,24 @@ const parseJsonArray = (value: string): unknown[] => {
     throw new Error('Params must be a JSON array. Example: ["arg1", 2]');
   }
   return parsed;
+};
+
+const detectCompileTarget = (source: string): 'aml' | 'asm' => {
+  const trimmed = source.trim();
+  if (!trimmed) {
+    return 'aml';
+  }
+
+  const amlPattern = /\b(contract|state|constructor|fn|storage|self|let|view)\b/;
+  if (amlPattern.test(trimmed)) {
+    return 'aml';
+  }
+
+  if (/[{}]/.test(trimmed)) {
+    return 'aml';
+  }
+
+  return 'asm';
 };
 
 function App() {
@@ -111,8 +140,8 @@ function App() {
   const [tokenAmountRaw, setTokenAmountRaw] = useState('1');
   const [tokenFee, setTokenFee] = useState('');
 
-  const [compileLanguage, setCompileLanguage] = useState<'asm' | 'aml'>('aml');
-  const [compileSource, setCompileSource] = useState('contract Counter { storage count: u64 = 0; }');
+  const [compileLanguage, setCompileLanguage] = useState<CompileLanguage>('auto');
+  const [compileSource, setCompileSource] = useState(AML_SAMPLE);
   const [bytecode, setBytecode] = useState('');
   const [deployParams, setDeployParams] = useState('');
   const [deployFee, setDeployFee] = useState('');
@@ -650,11 +679,27 @@ function App() {
             className="form-block"
             onSubmit={(event) => {
               event.preventDefault();
-              void runAction(`contract.compile.${compileLanguage}`, async () => {
+              const source = compileSource.trim();
+              if (!source) {
+                setLastError('contract.compile: source required');
+                return;
+              }
+
+              const detectedTarget = detectCompileTarget(source);
+              const target = compileLanguage === 'auto' ? detectedTarget : compileLanguage;
+
+              if (compileLanguage === 'asm' && detectedTarget === 'aml') {
+                setLastError(
+                  'contract.compile.asm: source looks like AML. Switch compiler to AML or Auto.',
+                );
+                return;
+              }
+
+              void runAction(`contract.compile.${target}`, async () => {
                 const response =
-                  compileLanguage === 'aml'
-                    ? await compileAml.mutateAsync({ source: compileSource })
-                    : await compileAsm.mutateAsync({ source: compileSource });
+                  target === 'aml'
+                    ? await compileAml.mutateAsync({ source })
+                    : await compileAsm.mutateAsync({ source });
 
                 if (response.bytecode) {
                   setBytecode(response.bytecode);
@@ -664,11 +709,29 @@ function App() {
             }}
           >
             <h3>Compile</h3>
-            <select value={compileLanguage} onChange={(event) => setCompileLanguage(event.target.value as 'asm' | 'aml')}>
+            <select
+              value={compileLanguage}
+              onChange={(event) => {
+                const nextLanguage = event.target.value as CompileLanguage;
+                setCompileLanguage(nextLanguage);
+                setCompileSource((prev) => {
+                  if (!prev.trim() || prev === AML_SAMPLE || prev === ASM_SAMPLE) {
+                    return nextLanguage === 'asm' ? ASM_SAMPLE : AML_SAMPLE;
+                  }
+                  return prev;
+                });
+              }}
+            >
+              <option value="auto">Auto (recommended)</option>
               <option value="aml">AML</option>
               <option value="asm">Assembly</option>
             </select>
-            <textarea value={compileSource} onChange={(event) => setCompileSource(event.target.value)} rows={6} />
+            <textarea
+              value={compileSource}
+              onChange={(event) => setCompileSource(event.target.value)}
+              rows={6}
+              placeholder={compileLanguage === 'asm' ? ASM_SAMPLE : AML_SAMPLE}
+            />
             <button disabled={appBusy || !isWalletLoaded}>Compile Source</button>
           </form>
 

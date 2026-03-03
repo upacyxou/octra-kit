@@ -22,14 +22,26 @@ It exists to make local web testing of Octra `webcli` simpler.
 
 ## Quick start
 
-1. Start Octra `webcli` locally (default: `http://127.0.0.1:8420`).
-2. Install dependencies:
+1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-3. Run the React demo:
+2. Run everything (submodule init + `webcli` + React app) with one command:
+
+```bash
+npm run local
+```
+
+This command:
+
+- initializes `vendor/webcli` submodule
+- runs upstream `vendor/webcli/setup.sh` (or `setup.bat` on Windows) to install deps and build, if binary is missing
+- starts `webcli` on `http://127.0.0.1:8420`
+- starts Vite app on `http://127.0.0.1:5173`
+
+3. Or run only the React demo (if `webcli` is already running):
 
 ```bash
 npm run dev
@@ -37,10 +49,35 @@ npm run dev
 
 Vite proxies `/api/*` to `http://127.0.0.1:8420` by default.
 
+## Local requirements for one-command mode
+
+- C++17 compiler
+- OpenSSL 3.x headers/libs
+- LevelDB headers/libs
+- `make`
+
+On macOS:
+
+```bash
+brew install openssl@3 leveldb
+```
+
 Optional env override:
 
 ```bash
 VITE_OCTRA_API_URL=http://127.0.0.1:8420 npm run dev
+```
+
+For one-command mode, you can override ports:
+
+```bash
+OCTRA_WEBCLI_PORT=9000 VITE_PORT=5174 npm run local
+```
+
+If you want to skip dependency auto-install and call `make` directly:
+
+```bash
+OCTRA_WEBCLI_USE_SETUP=0 npm run local
 ```
 
 ## Hook usage
