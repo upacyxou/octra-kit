@@ -109,6 +109,60 @@ function App() {
 }
 ```
 
+## Arbitrary contracts: deploy, read, write
+
+```tsx
+import {
+  useCompileAml,
+  useContractAddress,
+  useDeployContract,
+  useContractCall,
+  useContractView,
+} from './src/octra';
+
+function ArbitraryContractExample() {
+  const compileAml = useCompileAml();
+  const contractAddress = useContractAddress();
+  const deploy = useDeployContract();
+  const writeTx = useContractCall();
+  const readView = useContractView(
+    { address: 'oct_contract_address_here', method: 'get_count', params: [] },
+    { enabled: false },
+  );
+
+  const deployCounter = async () => {
+    const source = `contract Counter { storage count: u64 = 0; }`;
+    const compiled = await compileAml.mutateAsync({ source });
+    const predicted = await contractAddress.mutateAsync({ bytecode: compiled.bytecode });
+    const deployed = await deploy.mutateAsync({ bytecode: compiled.bytecode, source });
+    return { predicted: predicted.address, deployed: deployed.contract_address };
+  };
+
+  const writeAnyContract = async () => {
+    await writeTx.mutateAsync({
+      address: 'oct_contract_address_here',
+      method: 'increment',
+      params: [],
+      amount: '0',
+    });
+  };
+
+  const readAnyContract = async () => {
+    const result = await readView.refetch();
+    return result.data;
+  };
+
+  return null;
+}
+```
+
+Notes:
+
+- `useDeployContract` deploys your compiled bytecode.
+- `useContractCall` writes to any deployed contract address (state-changing tx).
+- `useContractView` reads any deployed contract address (read-only query).
+- `useContractStorage` (also available) reads raw storage keys for any contract address.
+
 ## Attribution and licensing
 
 - This project is licensed under **GPL-2.0-or-later** (see [LICENSE](./LICENSE)).

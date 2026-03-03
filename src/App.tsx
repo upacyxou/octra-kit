@@ -146,20 +146,17 @@ function App() {
   const [deployParams, setDeployParams] = useState('');
   const [deployFee, setDeployFee] = useState('');
 
-  const [contractAddress, setContractAddress] = useState('');
+  const [arbitraryContractAddress, setArbitraryContractAddress] = useState('');
   const [contractMethod, setContractMethod] = useState('');
   const [contractParams, setContractParams] = useState('[]');
   const [contractCallAmount, setContractCallAmount] = useState('0');
   const [contractCallFee, setContractCallFee] = useState('');
 
-  const [viewAddress, setViewAddress] = useState('');
   const [viewMethod, setViewMethod] = useState('');
   const [viewParams, setViewParams] = useState('[]');
 
-  const [storageAddress, setStorageAddress] = useState('');
   const [storageKey, setStorageKey] = useState('symbol');
 
-  const [infoAddress, setInfoAddress] = useState('');
   const [receiptHash, setReceiptHash] = useState('');
 
   const [fheValue, setFheValue] = useState('7');
@@ -191,9 +188,9 @@ function App() {
   const fheDecrypt = useFheDecrypt();
 
   const contractView = useContractView(
-    viewAddress.trim() && viewMethod.trim()
+    arbitraryContractAddress.trim() && viewMethod.trim()
       ? {
-          address: viewAddress.trim(),
+          address: arbitraryContractAddress.trim(),
           method: viewMethod.trim(),
           params: (() => {
             try {
@@ -207,11 +204,11 @@ function App() {
     { enabled: false },
   );
 
-  const contractStorage = useContractStorage(storageAddress.trim() || undefined, storageKey.trim() || undefined, {
+  const contractStorage = useContractStorage(arbitraryContractAddress.trim() || undefined, storageKey.trim() || undefined, {
     enabled: false,
   });
 
-  const contractInfo = useContractInfo(infoAddress.trim() || undefined, {
+  const contractInfo = useContractInfo(arbitraryContractAddress.trim() || undefined, {
     enabled: false,
   });
 
@@ -673,8 +670,23 @@ function App() {
         </div>
       </Section>
 
-      <Section title="Contracts + FHE" subtitle="Compile/deploy/call/view plus contract storage, info and receipt lookups">
+      <Section
+        title="Arbitrary Contracts + FHE"
+        subtitle="Deploy your own contracts, then read/write any contract address via hooks"
+      >
         <div className="grid two">
+          <div className="form-block">
+            <h3>Arbitrary Contract Target</h3>
+            <small>
+              This address is used by all read/write actions below. Paste any deployed contract address.
+            </small>
+            <input
+              value={arbitraryContractAddress}
+              onChange={(event) => setArbitraryContractAddress(event.target.value)}
+              placeholder="any contract address"
+            />
+          </div>
+
           <form
             className="form-block"
             onSubmit={(event) => {
@@ -743,7 +755,13 @@ function App() {
             <button
               disabled={appBusy || !isWalletLoaded || !bytecode.trim()}
               onClick={() => {
-                void runAction('contract.address', () => buildContractAddress.mutateAsync({ bytecode: bytecode.trim() }));
+                void runAction('contract.address', async () => {
+                  const response = await buildContractAddress.mutateAsync({ bytecode: bytecode.trim() });
+                  if (response.address) {
+                    setArbitraryContractAddress(response.address);
+                  }
+                  return response;
+                });
               }}
             >
               Compute Address
@@ -751,14 +769,21 @@ function App() {
             <button
               disabled={appBusy || !isWalletLoaded || !bytecode.trim()}
               onClick={() => {
-                void runAction('contract.deploy', () =>
-                  deployContract.mutateAsync({
+                void runAction('contract.deploy', async () => {
+                  const response = await deployContract.mutateAsync({
                     bytecode: bytecode.trim(),
                     params: deployParams.trim() || undefined,
                     ou: deployFee.trim() || undefined,
                     source: compileSource,
-                  }),
-                );
+                  });
+
+                  const deployedAddress =
+                    typeof response.contract_address === 'string' ? response.contract_address : undefined;
+                  if (deployedAddress) {
+                    setArbitraryContractAddress(deployedAddress);
+                  }
+                  return response;
+                });
               }}
             >
               Deploy Contract
@@ -779,7 +804,7 @@ function App() {
 
               void runAction('contract.call', () =>
                 callContract.mutateAsync({
-                  address: contractAddress.trim(),
+                  address: arbitraryContractAddress.trim(),
                   method: contractMethod.trim(),
                   params: parsedParams,
                   amount: contractCallAmount.trim() || '0',
@@ -788,12 +813,8 @@ function App() {
               );
             }}
           >
-            <h3>Call Contract</h3>
-            <input
-              value={contractAddress}
-              onChange={(event) => setContractAddress(event.target.value)}
-              placeholder="contract address"
-            />
+            <h3>Write to Contract (State-Changing)</h3>
+            <small>Target: {arbitraryContractAddress || 'not set'}</small>
             <input
               value={contractMethod}
               onChange={(event) => setContractMethod(event.target.value)}
@@ -815,16 +836,16 @@ function App() {
               rows={3}
               placeholder='["arg1", 2]'
             />
-            <button disabled={appBusy || !isWalletLoaded}>Send Contract Call Tx</button>
+            <button disabled={appBusy || !isWalletLoaded || !arbitraryContractAddress.trim()}>Send Contract Call Tx</button>
           </form>
 
           <div className="form-block">
-            <h3>View / Storage / Info / Receipt</h3>
-            <input value={viewAddress} onChange={(event) => setViewAddress(event.target.value)} placeholder="view address" />
+            <h3>Read Any Contract</h3>
+            <small>Target: {arbitraryContractAddress || 'not set'}</small>
             <input value={viewMethod} onChange={(event) => setViewMethod(event.target.value)} placeholder="view method" />
             <textarea value={viewParams} onChange={(event) => setViewParams(event.target.value)} rows={2} placeholder='[]' />
             <button
-              disabled={appBusy || !isWalletLoaded || !viewAddress || !viewMethod}
+              disabled={appBusy || !isWalletLoaded || !arbitraryContractAddress.trim() || !viewMethod}
               onClick={() => {
                 void runAction('contract.view', async () => {
                   const result = await contractView.refetch();
@@ -839,13 +860,12 @@ function App() {
             </button>
 
             <input
-              value={storageAddress}
-              onChange={(event) => setStorageAddress(event.target.value)}
-              placeholder="storage address"
+              value={storageKey}
+              onChange={(event) => setStorageKey(event.target.value)}
+              placeholder="storage key"
             />
-            <input value={storageKey} onChange={(event) => setStorageKey(event.target.value)} placeholder="storage key" />
             <button
-              disabled={appBusy || !isWalletLoaded || !storageAddress || !storageKey}
+              disabled={appBusy || !isWalletLoaded || !arbitraryContractAddress.trim() || !storageKey}
               onClick={() => {
                 void runAction('contract.storage', async () => {
                   const result = await contractStorage.refetch();
@@ -859,9 +879,8 @@ function App() {
               Read Storage
             </button>
 
-            <input value={infoAddress} onChange={(event) => setInfoAddress(event.target.value)} placeholder="info address" />
             <button
-              disabled={appBusy || !isWalletLoaded || !infoAddress}
+              disabled={appBusy || !isWalletLoaded || !arbitraryContractAddress.trim()}
               onClick={() => {
                 void runAction('contract.info', async () => {
                   const result = await contractInfo.refetch();
